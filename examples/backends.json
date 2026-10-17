@@ -1,0 +1,55 @@
+{
+  "default_backend": "mock",
+  "backends": {
+    "mock": {"adapter": "simulation", "default_model": "simulated-uniform"},
+    "laya": {
+      "adapter": "systemone",
+      "base_url": "http://127.0.0.1:8000",
+      "api_key_env": "LAYA_API_KEY",
+      "models_path": null,
+      "default_model": "jev-latest"
+    },
+    "jev": {
+      "adapter": "systemone",
+      "base_url": "https://jev-api.com",
+      "api_key_env": "JEV_API_KEY",
+      "require_api_key": true,
+      "default_model": "jev-latest"
+    },
+    "kev": {
+      "adapter": "systemone",
+      "base_url": "http://127.0.0.1:8009",
+      "api_key_env": "KEV_API_KEY",
+      "default_model": "kev-latest"
+    },
+    "jevany": {
+      "adapter": "systemone",
+      "base_url": "http://127.0.0.1:8008",
+      "default_model": "jevany-latest"
+    },
+    "jevlike": {
+      "adapter": "jevlike",
+      "base_url": "http://127.0.0.1:8011",
+      "api_key_env": "JEVLIKE_API_KEY",
+      "inference_path": "/predict",
+      "default_model": "jevlike",
+      "capabilities": {"question_types": ["choice"]}
+    },
+    "simulated-slow": {
+      "adapter": "simulation",
+      "default_model": "simulated-slow",
+      "simulation": {"latency_ms": 50, "fail_every": 3, "failure_status": 503}
+    },
+    "simulated-door": {
+      "adapter": "simulation",
+      "default_model": "simulated-door",
+      "simulation": {
+        "probabilities": {
+          "vote": {"yes": 0.05, "no": 0.9, "irrelevant": 0.05},
+          "urgency": {"false": 0.1, "true": 0.9},
+          "tension": {"0": 0.1, "1": 0.3, "2": 0.6}
+        }
+      }
+    }
+  }
+}

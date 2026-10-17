@@ -21,6 +21,7 @@ pub fn config(backend: Backend) -> Config {
         jev_key: None,
         gateway_key: None,
         benchmark_dataset_dir: None,
+        registry: None,
     }
 }
 

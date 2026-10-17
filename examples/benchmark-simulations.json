@@ -1,0 +1,5 @@
+{
+  "dataset": "support-triage",
+  "providers": ["mock", "simulated-slow"],
+  "options": {"warmup": 0, "repetitions": 2, "concurrency": 1, "include_details": true}
+}

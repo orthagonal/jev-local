@@ -3,7 +3,7 @@ name = "jev-local"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Jev System One HTTP compatibility gateway for local Laya inference and hosted Jev"
+description = "Decision model gateway with configurable backends, simulations, and comparison benchmarks"
 repository = "https://github.com/your-account/jev-local"
 
 [dependencies]
