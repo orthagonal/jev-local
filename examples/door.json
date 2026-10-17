@@ -1,0 +1,17 @@
+{
+  "model": "jev-latest",
+  "state": "Don't open that door!",
+  "questions": {
+    "vote": {
+      "type": "choice",
+      "instructions": "Does the speaker want the door opened?",
+      "criteria": {
+        "yes": "Supports opening the door",
+        "no": "Opposes opening the door",
+        "irrelevant": "No expressed preference"
+      }
+    },
+    "urgency": {"type": "noul", "instructions": "Is the speaker urgently warning the character?"},
+    "tension": {"type": "score", "instructions": "How tense does this sound?", "criteria": ["calm", "concerned", "alarmed"]}
+  }
+}

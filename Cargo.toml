@@ -1,0 +1,21 @@
+[package]
+name = "jev-local"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Jev System One HTTP compatibility gateway for local Laya inference and hosted Jev"
+repository = "https://github.com/your-account/jev-local"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tower = { version = "0.4", features = ["util"] }
+http-body-util = "0.1"
