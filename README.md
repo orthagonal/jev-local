@@ -1,165 +1,146 @@
 # jev-local
 
-**A Test Environment for Jev-S1 request/response interface.** A lightweight HTTP mock of Jev interface written in Rust and backed by Laya-S1. Test locally on your own GPU, then switch to paid hosted Jev without changing your application's endpoint or payloads!
+A Rust server for decision models: one System One HTTP API for real inference,
+simulation, and model comparison. Switch the backend in server configuration
+while keeping your application's endpoint and request format.
 
-**Status: v0.1 prototype.** Compatible **route and successful response shape**, not a certified byte-for-byte clone of every Jev behavior. HTTP request validation, errors, model metadata, and upstream limits differ. Local Laya predictions are not identical to Jev predictions.
+Supports hosted Jev, Laya, KEV, JevAny, a jevlike serving bridge, and arbitrary
+System One servers. Register multiple model sizes or deployments with distinct
+profile IDs. Simulation profiles provide deterministic probabilities, recorded
+responses, delays, and errors without a model or API key.
 
-## Requirements
+**Status: prototype.** The gateway provides a common interface. Predictions,
+calibration, resource requirements, and upstream limits remain model-specific.
 
-- Rust stable toolchain (install via https://rustup.rs), Cargo
-- For actual local AI classification: Python 3.10+ and `laya[serve]` (installed separately, as Laya provides its own mature Jev-compatible server)
-- For hosted Jev: an API key
+## Start without a model
 
-## Build
-
-```sh
-cargo build --release
-cargo test
-```
-
-On Windows, executable path is `target\\release\\jev-local.exe`; on macOS/Linux it is `target/release/jev-local`.
-
-## Automated route tests
-
-The tests build the real gateway router in-process; you do not need to start the
-gateway executable. Mock route tests and controlled upstream HTTP tests always
-run. Real inference tests are additional and enabled by the environment:
-
-| Tests | Enabled when | Upstream |
-|---|---|---|
-| Mock routes and forwarding | Always | None; forwarding tests start temporary local HTTP servers |
-| Laya live routes | `TEST_LAYA=true` (also accepts `1`) | `LAYA_BASE_URL`, default `http://127.0.0.1:8000` |
-| Jev live routes | `JEV_API_KEY` is nonempty | `JEV_BASE_URL`, default `https://jev-api.com` |
+Requires Rust stable and Cargo:
 
 ```powershell
-# Run all enabled tests; show RUN/SKIP messages for live providers.
-cargo test --all-targets -- --nocapture
-
-# Also enable Laya. Start laya-serve separately before running this.
-$env:TEST_LAYA = "true"
-$env:LAYA_BASE_URL = "http://127.0.0.1:8000"
-cargo test --all-targets -- --nocapture
-
-# Jev tests run automatically if JEV_API_KEY is already set in this shell.
-# To run only the conditional live tests:
-cargo test --test live -- --nocapture
-
-# Explicitly run only offline tests, regardless of environment variables:
-cargo test --lib --test routes --test forwarding --test benchmark
+cargo run --release -- --backends-file examples/backends.json
 ```
 
-In Bash, enable Laya with `TEST_LAYA=true cargo test --all-targets -- --nocapture`.
-Both live providers can run in the same test invocation. Tests read process
-environment variables, not `.env` files or gateway command-line arguments.
+In another PowerShell terminal:
 
-Each enabled live provider checks `/health`, `/v1/models`, and one
-`POST /v1/systemone` containing all three question types. They check the response
-contract, probability ranges and totals, score bounds, and token counts; they do
-not require identical predictions across providers. Jev calls use your configured
-account and may consume credits. The gateway returns its own model metadata in
-Laya mode, so only the inference POST contacts Laya.
+```powershell
+Invoke-RestMethod http://127.0.0.1:8080/v1/backends
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8080/v1/systemone `
+    -ContentType application/json -Body (Get-Content examples/door.json -Raw)
+```
 
-Disabled live tests return early and print `SKIP` with the reason. Rust's standard
-test harness labels these returns `ok`; use `--nocapture` to see whether inference
-actually ran. Once enabled, provider failures fail the test without falling back
-to mock. The gateway allows 120 seconds per upstream request; preload/warm Laya
-before testing if its initial model download would take longer. Laya must accept
-unauthenticated requests because this gateway does not forward a Laya API key.
+The default profile is an offline uniform simulation. Add
+`-Headers @{"X-Decision-Backend"="simulated-door"}` to select configured
+probabilities with the same request. These fixtures are for application testing.
 
-Test sources are in `tests/routes.rs`, `tests/forwarding.rs`, and `tests/live.rs`,
-with shared fixtures and contract checks in `tests/common/mod.rs`. The response
-checks follow the [Jev API reference](https://jev-api.com/docs/api) and
-[Laya HTTP API](https://github.com/NandhaKishorM/laya/blob/main/docs/http-api.md).
+## Use a real backend
 
-## Model Comparison Benchmark
+Start the relevant model server, then select its profile:
 
-Run `POST /v1/benchmarks/compare` with a labeled dataset to compare Laya and Jev
-on accuracy, calibration (Brier score, log loss, and ECE), latency percentiles,
-and throughput. Select a built-in scenario by name, load custom dataset files,
-or supply an inline dataset. The response reports errors and coverage alongside
-scores, with configurable warmup, repetitions, concurrency, and model IDs.
+```powershell
+cargo run --release -- --backends-file examples/backends.json --provider kev
+```
 
-Start the gateway with Laya's URL and your Jev key configured, then post
-[`examples/benchmark.json`](examples/benchmark.json) to the comparison route.
-The benchmark's providers are independent of the ordinary inference provider.
-List scenarios at `GET /v1/benchmarks/datasets`.
+Or edit `default_backend` in your profile file. Existing clients keep calling
+`POST /v1/systemone` with `state`, `questions`, and optional `model`. Stable model
+aliases map to the backend's model. Individual calls can use a selection header
+or `/v1/backends/<id>/systemone`.
 
-See [benchmark setup, dataset format, and metric definitions](docs/benchmark.md).
-The included starter datasets demonstrate the workflow; they are too small to
-draw model quality conclusions.
+| Backend | Adapter | Default service | Question types |
+|---|---|---|---|
+| Jev | `systemone` | `https://jev-api.com` | choice, score, noul |
+| Laya | `systemone` | localhost:8000 | choice, score, noul |
+| KEV (`jaredpalmer/kev`) | `systemone` | localhost:8009 | choice, score, noul |
+| JevAny | `systemone` | localhost:8008 | choice, score, noul |
+| jevlike bridge | `jevlike` | localhost:8011 | choice |
+| Simulation | `simulation` | In process | choice, score, noul |
 
-## 1. Zero-cost mock mode (no model needed)
+Hosted Jev requires `JEV_API_KEY` in the gateway's environment. Credentials are
+referenced by profile configuration. Add another System One server through
+configuration without editing Rust. Real runtimes run separately; the gateway
+does not distribute or automatically download weights.
 
-```sh
+[Backend setup, configuration, response semantics, and simulations](docs/backends.md).
+
+## Compare models or simulations
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8080/v1/benchmarks/compare `
+    -ContentType application/json `
+    -Body (Get-Content examples/benchmark-simulations.json -Raw)
+```
+
+Choose any registered IDs in `providers`. Reports include accuracy, Brier score,
+log loss, ECE, latency percentiles, throughput, failures, and simulation status.
+Use named datasets or supply labeled cases. Warmup, repetitions, concurrency,
+and model selectors are configurable.
+
+`examples/benchmark-models.json` compares Laya, Jev, KEV, and JevAny when their
+services are configured. `examples/benchmark.json` retains the original Laya/Jev
+comparison. Starter datasets demonstrate the workflow; use representative
+labeled data for meaningful accuracy comparisons.
+
+[Benchmark setup, dataset format, and metric definitions](docs/benchmark.md).
+
+## Routes
+
+| Route | Purpose |
+|---|---|
+| `GET /health` | Gateway liveness |
+| `POST /v1/systemone` | Inference or simulation |
+| `GET /v1/models` | Selected backend's model aliases |
+| `GET /v1/backends` | Registered profiles and capabilities |
+| `GET /v1/backends/<id>` | Profile metadata |
+| `POST /v1/backends/<id>/systemone` | Select a profile explicitly |
+| `GET /v1/backends/<id>/models` | Underlying model listing |
+| `GET /v1/benchmarks/datasets` | Dataset catalog |
+| `GET /v1/benchmarks/datasets/<id>` | Dataset requests and labels |
+| `POST /v1/benchmarks/compare` | Comparison report |
+
+Set `JEV_LOCAL_API_KEY` to require bearer authentication for every route except
+`/health`. The server defaults to loopback on port 8080. Backend selection uses
+server-registered URLs and credentials. Response headers
+`X-Decision-Simulated` and `X-Decision-Backend` identify the source.
+
+## Build and test
+
+```powershell
+cargo build --release
+# Offline checks, regardless of live credentials:
+cargo test --lib --test routes --test forwarding --test benchmark --test backends
+# Bridge protocol checks: Python 3.10+, no model dependencies:
+python -m unittest discover -s scripts -p test_serve_jevlike.py -v
+# All checks, including enabled live providers:
+cargo test --all-targets -- --nocapture
+```
+
+| Live test | Runs when | Optional service override |
+|---|---|---|
+| Laya | `TEST_LAYA=true` | `LAYA_BASE_URL` |
+| Jev | `JEV_API_KEY` is nonempty | `JEV_BASE_URL` |
+| KEV | `TEST_KEV=true` | `KEV_BASE_URL` |
+| JevAny | `TEST_JEVANY=true` | `JEVANY_BASE_URL` |
+| jevlike bridge | `TEST_JEVLIKE=true` | `JEVLIKE_BASE_URL` |
+
+Start model servers before enabling live tests. Disabled tests print `SKIP`;
+Rust's standard harness labels early returns `ok`, so use `--nocapture` to see
+which actually ran. Enabled provider failures fail tests. Tests read process
+environment, not `.env` files. Jev calls may consume credits.
+
+## Existing CLI compatibility
+
+The original commands still work without a profile file:
+
+```powershell
 cargo run --release -- --provider mock
-```
-
-In another terminal:
-
-```sh
-curl -s http://127.0.0.1:8080/v1/systemone -H 'content-type: application/json' --data-binary @examples/door.json
-```
-
-Mock mode intentionally returns **uniform probabilities**, not a meaningful classification. It is suitable for transport integration and deterministic contract tests. Do not use mock results to evaluate model quality.
-
-## 2. Real local Laya mode (free inference)
-
-Install/start upstream Laya in a separate terminal:
-
-```sh
-python -m venv .venv
-# Windows PowerShell: .\\.venv\\Scripts\\python.exe -m pip install 'laya[serve]'
-# Unix: .venv/bin/python -m pip install 'laya[serve]'
-# Activate the environment, or call the executable inside .venv directly:
-# Windows: .\\.venv\\Scripts\\laya-serve.exe
-# Unix: .venv/bin/laya-serve
-```
-
-It listens at `http://localhost:8000`; first real prediction may download model weights. Then start gateway:
-
-```sh
 cargo run --release -- --provider laya --laya-url http://127.0.0.1:8000
-```
-
-Call the **same** curl command as mock mode. All inference happens in the local Laya service; this Rust prototype is a gateway, **not native Rust Candle inference**. Upstream Laya also natively offers the Jev endpoint, so a gateway is optional for local-only use. This project is useful for stable routing, future policy, observability and switching providers.
-
-## 3. Hosted Jev passthrough
-
-```sh
-# PowerShell: $env:JEV_API_KEY='your-key'
-# bash: export JEV_API_KEY='your-key'
+# Set JEV_API_KEY in this shell first:
 cargo run --release -- --provider jev
 ```
 
-The gateway forwards POST `/v1/systemone` and GET `/v1/models` to the configured hosted endpoint with the server-side secret. Responses preserve the upstream HTTP status, content-type and body. The gateway does not send your API key to callers.
+Those modes retain legacy response behavior. Profile files default to normalized
+responses with consistent confidence semantics. Reevaluate thresholds when
+changing models or confidence definitions. Built-in profiles also include KEV,
+JevAny, and jevlike at their default local ports.
 
-## Optional local gateway authentication
-
-Set `JEV_LOCAL_API_KEY` in environment. Clients must send `Authorization: Bearer <key>` to the gateway. Keep the service bound to loopback unless you configure network security and TLS separately. Do not expose raw Laya or the gateway publicly without appropriate protection.
-
-## Current limitations
-
-- `choice`, `score`, `noul` requests: supported through mock or upstream forwarding.
-- GET `/v1/models` in mock/Laya mode provides local compatibility metadata, **not** an exact replica of hosted Jev model metadata.
-- Only a subset of documented Jev request validation is implemented; upstream providers may differ on edge cases.
-- Requests forwarded to Laya may produce Laya-specific errors, which are passed through unchanged.
-- Native Candle-based Laya inference is **not included in v0.1**. The Rust HTTP gateway uses upstream Laya's existing Jev-compatible server.
-- No batching, rate-limiting, websocket or shadow comparison in v0.1.
-- Model weights are not redistributed.
-
-## Architecture
-
-```
-Your app (any language) --> jev-local (Rust, :8080)
-                              |-- mock (uniform fixtures)
-                              |-- laya (localhost:8000, real local model)
-                              `-- jev  (hosted paid endpoint)
-```
-
-## Sources / upstream
-
-- Jev wire contract: https://jev-api.com/docs/api
-- Laya source and self-hosted Jev-compatible API: https://github.com/NandhaKishorM/laya
-- Laya HTTP docs: https://github.com/NandhaKishorM/laya/blob/main/docs/http-api.md
-
-This repository is independently developed and is not affiliated with or endorsed by Jev or Laya maintainers.
+This repository is independent of the model providers. Upstream links and
+setup instructions are in [the backend guide](docs/backends.md).

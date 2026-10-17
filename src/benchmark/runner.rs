@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
-    time::{Duration, Instant},
+    time::Instant,
 };
 use tokio::task::JoinSet;
 
@@ -22,6 +22,7 @@ struct Attempt {
     error: Option<String>,
     model: Option<String>,
     questions: Vec<QuestionScore>,
+    backend_metadata: Value,
 }
 
 struct CallError {
@@ -31,67 +32,33 @@ struct CallError {
 
 async fn infer(
     st: &AppState,
-    provider: Provider,
+    provider: &str,
     payload: Value,
+    model_override: Option<&str>,
     timeout_ms: u64,
-) -> Result<(Value, u16), CallError> {
-    if provider == Provider::Mock {
-        return Ok((crate::mock_decide(&payload), 200));
-    }
-    let base = match provider {
-        Provider::Laya => &st.cfg.laya_url,
-        Provider::Jev => &st.cfg.jev_url,
-        Provider::Mock => unreachable!(),
-    };
-    let url = format!("{}/v1/systemone", base.trim_end_matches('/'));
-    let mut request = st
-        .client
-        .post(url)
-        .json(&payload)
-        .timeout(Duration::from_millis(timeout_ms));
-    if provider == Provider::Jev {
-        request = request.bearer_auth(st.cfg.jev_key.as_deref().unwrap());
-    }
-    // Errors deliberately omit URLs, secrets, and arbitrary upstream response bodies.
-    let mut response = request.send().await.map_err(|e| CallError {
-        status: None,
-        message: if e.is_timeout() {
-            "upstream request timed out"
-        } else {
-            "upstream request failed"
-        }
-        .into(),
+) -> Result<(Value, u16, Value), CallError> {
+    let backend = st.registry.get(provider).map_err(|e| CallError {
+        status: e.upstream_status,
+        message: e.message,
     })?;
-    let status = response.status();
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(|e| CallError {
-        status: Some(status.as_u16()),
-        message: if e.is_timeout() {
-            "upstream body timed out"
-        } else {
-            "upstream body read failed"
-        }
-        .into(),
-    })? {
-        if bytes.len() + chunk.len() > 4 * 1024 * 1024 {
-            return Err(CallError {
-                status: Some(status.as_u16()),
-                message: "upstream response exceeds 4 MiB".into(),
-            });
-        }
-        bytes.extend_from_slice(&chunk);
-    }
-    if !status.is_success() {
+    let response = backend
+        .infer(&st.client, payload, model_override, timeout_ms)
+        .await
+        .map_err(|e| CallError {
+            status: e.upstream_status,
+            message: e.message,
+        })?;
+    if !response.status.is_success() {
         return Err(CallError {
-            status: Some(status.as_u16()),
-            message: format!("upstream returned HTTP {status}"),
+            status: Some(response.status.as_u16()),
+            message: format!("upstream returned HTTP {}", response.status),
         });
     }
-    let body = serde_json::from_slice(&bytes).map_err(|_| CallError {
-        status: Some(status.as_u16()),
+    let body = serde_json::from_slice(&response.body).map_err(|_| CallError {
+        status: Some(response.status.as_u16()),
         message: "upstream returned invalid JSON".into(),
     })?;
-    Ok((body, status.as_u16()))
+    Ok((body, response.status.as_u16(), response.metadata))
 }
 
 async fn attempt(
@@ -103,12 +70,9 @@ async fn attempt(
     model: Option<String>,
 ) -> Attempt {
     let case = &dataset.cases[index % dataset.cases.len()];
-    let mut payload = case.request.clone();
-    if let Some(model) = model {
-        payload["model"] = json!(model);
-    }
+    let payload = case.request.clone();
     let started = Instant::now();
-    let outcome = infer(&st, provider, payload, timeout_ms).await;
+    let outcome = infer(&st, &provider, payload, model.as_deref(), timeout_ms).await;
     let mut result = Attempt {
         case_id: case.id.clone(),
         repetition: index / dataset.cases.len() + 1,
@@ -117,9 +81,11 @@ async fn attempt(
         error: None,
         model: None,
         questions: Vec::new(),
+        backend_metadata: Value::Null,
     };
     match outcome {
-        Ok((body, status)) => {
+        Ok((body, status, metadata)) => {
+            result.backend_metadata = metadata;
             result.http_status = Some(status);
             match metrics::score(case, &body) {
                 Ok(questions) => {
@@ -168,7 +134,7 @@ pub async fn run(
         let result = attempt(
             st.clone(),
             dataset.clone(),
-            provider,
+            provider.clone(),
             index,
             options.timeout_ms,
             model.clone(),
@@ -183,13 +149,29 @@ pub async fn run(
     let mut tasks = JoinSet::new();
     let mut next = count.min(options.concurrency);
     for index in 0..next {
-        launch(&mut tasks, &st, &dataset, provider, index, options, &model);
+        launch(
+            &mut tasks,
+            &st,
+            &dataset,
+            provider.clone(),
+            index,
+            options,
+            &model,
+        );
     }
     let mut attempts = Vec::with_capacity(count);
     while let Some(outcome) = tasks.join_next().await {
         attempts.push(outcome.map_err(|_| "benchmark worker failed".to_owned())?);
         if next < count {
-            launch(&mut tasks, &st, &dataset, provider, next, options, &model);
+            launch(
+                &mut tasks,
+                &st,
+                &dataset,
+                provider.clone(),
+                next,
+                options,
+                &model,
+            );
             next += 1;
         }
     }
@@ -215,6 +197,8 @@ pub async fn run(
     let failures: Vec<_> = attempts.iter().filter(|a| a.error.is_some()).collect();
     Ok(json!({
         "provider": provider,
+        "backend": st.registry.get(&provider).map_err(|e|e.message)?.metadata(),
+        "simulated": st.registry.get(&provider).map_err(|e|e.message)?.simulated(),
         "status": if successes == count { "ok" } else if successes == 0 { "failed" } else { "partial" },
         "observed_models": models,
         "warmup": {"requests": options.warmup, "failed_requests": warmup_errors.len(), "failures": warmup_errors},

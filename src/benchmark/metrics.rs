@@ -34,8 +34,8 @@ fn distribution(answer: &Value, keys: &[String]) -> Result<Vec<f64>, String> {
         .map(|key| probability(&answer["probabilities"][key]))
         .collect::<Result<Vec<_>, _>>()?;
     let sum: f64 = probabilities.iter().sum();
-    if (sum - 1.0).abs() > 0.01 {
-        return Err("probabilities must sum to one (tolerance 0.01)".into());
+    if (sum - 1.0).abs() > 0.02 {
+        return Err("probabilities must sum to one (tolerance 0.02)".into());
     }
     // Accommodate rounded API output while using a true distribution for metrics.
     for p in &mut probabilities {

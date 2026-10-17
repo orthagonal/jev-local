@@ -1,0 +1,27 @@
+{
+  "default_backend": "recorded",
+  "backends": {
+    "recorded": {
+      "adapter": "simulation",
+      "default_model": "simulated-fallback",
+      "simulation": {
+        "fixtures": [
+          {
+            "match_request": {"state": "I was charged twice. Please refund the duplicate payment."},
+            "latency_ms": 20,
+            "response": {
+              "model": "recorded-refund",
+              "answers": {"team": {"type": "choice", "choice": "billing", "confidence": 0.96, "probabilities": {"billing": 0.98, "technical": 0.02}}},
+              "usage": {"input_tokens": 0, "output_tokens": 0}
+            }
+          },
+          {
+            "match_request": {"state": "force-rate-limit"},
+            "status": 429,
+            "response": {"error": {"message": "Simulated rate limit"}}
+          }
+        ]
+      }
+    }
+  }
+}

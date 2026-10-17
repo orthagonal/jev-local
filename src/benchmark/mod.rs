@@ -19,13 +19,7 @@ use std::{
 
 type RouteError = (StatusCode, Json<Value>);
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(rename_all = "lowercase")]
-pub enum Provider {
-    Laya,
-    Jev,
-    Mock,
-}
+pub type Provider = String;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
@@ -52,7 +46,7 @@ impl Default for Options {
 }
 
 fn default_providers() -> Vec<Provider> {
-    vec![Provider::Laya, Provider::Jev]
+    vec!["laya".into(), "jev".into()]
 }
 
 #[derive(Deserialize)]
@@ -133,17 +127,6 @@ pub async fn compare(
             "model overrides must be nonempty strings for selected providers",
         ));
     }
-    if request.providers.contains(&Provider::Jev)
-        && !st
-            .cfg
-            .jev_key
-            .as_deref()
-            .is_some_and(|s| !s.trim().is_empty())
-    {
-        return Err(invalid(
-            "JEV_API_KEY is required when providers includes jev",
-        ));
-    }
     let dataset = match request.dataset {
         Selection::Named(id) => dataset::load(&id, st.cfg.benchmark_dataset_dir.as_deref())
             .await
@@ -154,6 +137,17 @@ pub async fn compare(
         }
     };
     let questions: usize = dataset.question_counts().values().sum();
+    for provider in &request.providers {
+        let backend = st.registry.get(provider).map_err(|e| invalid(&e.message))?;
+        for case in &dataset.cases {
+            backend.check(&case.request).map_err(|e| {
+                invalid(&format!(
+                    "backend {provider}, case {}: {}",
+                    case.id, e.message
+                ))
+            })?;
+        }
+    }
     if dataset.cases.len() * options.repetitions + options.warmup > 10_000
         || questions * options.repetitions > 100_000
     {
@@ -179,7 +173,7 @@ pub async fn compare(
             runner::run(
                 st.clone(),
                 dataset.clone(),
-                *provider,
+                provider.clone(),
                 options,
                 request.models.get(provider).cloned(),
             )
@@ -200,7 +194,7 @@ pub async fn compare(
             "accuracy": "micro average over labeled questions; failed requests count as incorrect",
             "calibration": "successful requests only; returned probabilities, not provider confidence",
             "brier_score": "mean sum of squared categorical probability errors; range 0..2, including binary noul",
-            "latency": "client-observed HTTP and JSON decode time; warmup excluded; nearest-rank percentiles",
+            "latency": "client-observed adapter time including transport, decoding, and normalization; warmup excluded; nearest-rank percentiles",
             "throughput": "completed requests divided by measured provider wall time; warmup excluded"
         },
         "results": results

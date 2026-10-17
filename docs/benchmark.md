@@ -1,6 +1,7 @@
 # Model Comparison Benchmark
 
-`POST /v1/benchmarks/compare` evaluates labeled examples against Laya and Jev.
+`POST /v1/benchmarks/compare` evaluates labeled examples against any registered
+decision backend, including Laya, Jev, KEV, JevAny, jevlike, and simulations.
 The response contains separate accuracy, calibration, latency, throughput, and
 failure results for each provider, plus the dataset version, run options, provider
 order, start timestamp, and total wall time. Save this JSON to compare runs.
@@ -13,7 +14,7 @@ from the gateway configuration. It works independently of the provider chosen
 for ordinary `/v1/systemone` calls, so the gateway can remain in mock mode:
 
 ```powershell
-cargo run --release -- --provider mock
+cargo run --release -- --backends-file examples/backends.json
 ```
 
 From another PowerShell terminal:
@@ -36,6 +37,17 @@ nonempty API key returns `422` before running either provider. Each enabled Jev
 request, including warmup and repetitions, may consume account credits. The
 `TEST_LAYA` flag only controls automated live tests; the benchmark route uses the
 providers selected in its request.
+
+`providers` contains registry profile IDs, including multiple sizes of one model
+family. Use `examples/benchmark-models.json` for four real profiles, or
+`examples/benchmark-simulations.json` for an offline trial. Both API and benchmark
+use the same adapter, aliases, capability checks, normalization, and simulation
+counters. Every selected profile is preflighted against every case before any
+inference. The jevlike adapter requires a choice-only dataset.
+
+Each result includes safe backend metadata and a `simulated` boolean. Details
+include source confidence values and usage availability in `backend_metadata`.
+Simulation metrics describe configured output/delay, not real model performance.
 
 For an offline trial, change `providers` to `["mock"]`. To evaluate only Laya,
 use `["laya"]`. Mock results exercise the benchmark and have no inference quality
@@ -123,8 +135,8 @@ Use optional `models` overrides when selecting provider-specific model IDs:
 {"dataset":"sentiment", "models":{"laya":"english", "jev":"jev-latest"}}
 ```
 
-Without an override, each dataset request's `model` is preserved; omitting it
-leaves the upstream to choose its default. `observed_models` records the model
+Without an override, each dataset request's `model` uses the profile's alias
+mapping; omitting it uses the profile or upstream default. `observed_models` records the model
 IDs returned by successful measured requests.
 
 ## Run options
@@ -179,12 +191,14 @@ highest probability, choosing the lowest index on ties; MAE uses the returned
 numeric score. Noul predicts true at probability >= 0.5. Calibration uses the
 probability assigned to the predicted answer, never the providers' `confidence`
 fields, which have different definitions. Probabilities must be finite, in
-0..1, contain exactly the expected keys, and sum to one within 0.01. Rounded
+0..1, contain exactly the expected keys, and sum to one within 0.02. Rounded
 distributions within that tolerance are normalized before scoring. ECE bins
 are `[lower, upper)`, with probability 1 included in the last bin.
 
-Latency runs from immediately before the upstream request until its response
-has been read and JSON decoded; quality scoring is excluded. For HTTP errors it
+Latency runs from immediately before the shared adapter call until its response
+is read, normalized, and JSON decoded; benchmark quality scoring is excluded.
+Jevlike includes all native calls per request; simulation includes configured
+delay and response construction. For HTTP errors it
 includes reading the error body; for connection/timeout errors it ends when that
 error is observed. Percentiles use nearest rank. Throughput measures the wall
 time to finish the measured workload, including scheduling and quality scoring.
@@ -206,7 +220,7 @@ Definitions follow the [Jev response contract](https://jev-api.com/docs/api),
 ## Verify the implementation without inference
 
 ```powershell
-cargo test --lib --test benchmark --test routes --test forwarding
+cargo test --lib --test benchmark --test routes --test forwarding --test backends
 ```
 
 These tests use local controlled upstream servers, with known probability

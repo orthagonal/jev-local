@@ -116,7 +116,7 @@ async fn inference_forwarding_preserves_payload_and_uses_provider_credentials() 
                 "Bearer hosted-secret"
             ),
             Backend::Laya => assert!(!captured.headers.contains_key(header::AUTHORIZATION)),
-            Backend::Mock => unreachable!(),
+            _ => unreachable!(),
         }
     }
 }
@@ -261,6 +261,7 @@ async fn unreachable_upstreams_return_bad_gateway() {
         let url = format!("http://{}", listener.local_addr().unwrap());
         drop(listener);
         let mut cfg = config(backend);
+        cfg.jev_key = Some("hosted-secret".into());
         cfg.laya_url = url.clone();
         cfg.jev_url = url;
         let response = request(

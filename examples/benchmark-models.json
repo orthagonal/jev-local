@@ -1,0 +1,5 @@
+{
+  "dataset": "support-triage",
+  "providers": ["laya", "jev", "kev", "jevany"],
+  "options": {"warmup": 1, "repetitions": 3, "concurrency": 1, "include_details": true}
+}
