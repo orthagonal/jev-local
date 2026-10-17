@@ -1,6 +1,8 @@
-use axum::{body::Body, extract::State, http::{header, HeaderMap, HeaderValue, StatusCode}, routing::{get, post}, Json, Router};
+use axum::{body::Body, extract::State, http::{header, HeaderMap, StatusCode}, routing::{get, post}, Json, Router};
 use serde_json::{json, Map, Value};
 use std::{sync::Arc, time::Duration};
+
+pub mod benchmark;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Backend { Mock, Laya, Jev }
@@ -17,10 +19,15 @@ pub struct Config {
     pub jev_url: String,
     pub jev_key: Option<String>,
     pub gateway_key: Option<String>,
+    pub benchmark_dataset_dir: Option<std::path::PathBuf>,
 }
 
 #[derive(Clone)]
-pub struct AppState { pub cfg: Config, pub client: reqwest::Client }
+pub struct AppState {
+    pub cfg: Config,
+    pub client: reqwest::Client,
+    pub benchmark_gate: Arc<tokio::sync::Semaphore>,
+}
 
 pub fn app(cfg: Config) -> Router {
     let client = reqwest::Client::builder().timeout(Duration::from_secs(120)).build().expect("client");
@@ -28,7 +35,12 @@ pub fn app(cfg: Config) -> Router {
         .route("/health", get(|| async { Json(json!({"status": "ok"})) }))
         .route("/v1/systemone", post(systemone))
         .route("/v1/models", get(models))
-        .with_state(Arc::new(AppState { cfg, client }))
+        .route("/v1/benchmarks/datasets", get(benchmark::datasets))
+        .route("/v1/benchmarks/datasets/:id", get(benchmark::dataset))
+        .route("/v1/benchmarks/compare", post(benchmark::compare))
+        .with_state(Arc::new(AppState {
+            cfg, client, benchmark_gate: Arc::new(tokio::sync::Semaphore::new(1)),
+        }))
 }
 
 fn error(status: StatusCode, message: &str) -> (StatusCode, Json<Value>) {

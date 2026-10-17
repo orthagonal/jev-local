@@ -45,7 +45,7 @@ cargo test --all-targets -- --nocapture
 cargo test --test live -- --nocapture
 
 # Explicitly run only offline tests, regardless of environment variables:
-cargo test --lib --test routes --test forwarding
+cargo test --lib --test routes --test forwarding --test benchmark
 ```
 
 In Bash, enable Laya with `TEST_LAYA=true cargo test --all-targets -- --nocapture`.
@@ -70,6 +70,23 @@ Test sources are in `tests/routes.rs`, `tests/forwarding.rs`, and `tests/live.rs
 with shared fixtures and contract checks in `tests/common/mod.rs`. The response
 checks follow the [Jev API reference](https://jev-api.com/docs/api) and
 [Laya HTTP API](https://github.com/NandhaKishorM/laya/blob/main/docs/http-api.md).
+
+## Model Comparison Benchmark
+
+Run `POST /v1/benchmarks/compare` with a labeled dataset to compare Laya and Jev
+on accuracy, calibration (Brier score, log loss, and ECE), latency percentiles,
+and throughput. Select a built-in scenario by name, load custom dataset files,
+or supply an inline dataset. The response reports errors and coverage alongside
+scores, with configurable warmup, repetitions, concurrency, and model IDs.
+
+Start the gateway with Laya's URL and your Jev key configured, then post
+[`examples/benchmark.json`](examples/benchmark.json) to the comparison route.
+The benchmark's providers are independent of the ordinary inference provider.
+List scenarios at `GET /v1/benchmarks/datasets`.
+
+See [benchmark setup, dataset format, and metric definitions](docs/benchmark.md).
+The included starter datasets demonstrate the workflow; they are too small to
+draw model quality conclusions.
 
 ## 1. Zero-cost mock mode (no model needed)
 

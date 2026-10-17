@@ -1,0 +1,40 @@
+{
+  "id": "support-triage",
+  "version": "1",
+  "description": "Small hand-labeled support routing examples for exercising the benchmark; not a representative evaluation corpus.",
+  "cases": [
+    {
+      "id": "billing",
+      "request": {
+        "state": "I was charged twice for my subscription. Please refund the duplicate charge; there is no rush.",
+        "questions": {
+          "team": {"type": "choice", "instructions": "Which team should handle this request?", "criteria": {"billing": "Payments, invoices, and refunds", "technical": "Bugs and outages", "sales": "Pricing before purchase"}},
+          "urgent": {"type": "noul", "instructions": "Does this request require immediate attention?"}
+        }
+      },
+      "expected": {"team": "billing", "urgent": false}
+    },
+    {
+      "id": "outage",
+      "request": {
+        "state": "Our checkout is down and no customers can pay. We need an engineer immediately!",
+        "questions": {
+          "team": {"type": "choice", "instructions": "Which team should handle this request?", "criteria": {"billing": "Payments, invoices, and refunds", "technical": "Bugs and outages", "sales": "Pricing before purchase"}},
+          "urgent": {"type": "noul", "instructions": "Does this request require immediate attention?"}
+        }
+      },
+      "expected": {"team": "technical", "urgent": true}
+    },
+    {
+      "id": "pricing",
+      "request": {
+        "state": "We are considering buying next quarter. Can you explain enterprise pricing when you have time?",
+        "questions": {
+          "team": {"type": "choice", "instructions": "Which team should handle this request?", "criteria": {"billing": "Payments, invoices, and refunds", "technical": "Bugs and outages", "sales": "Pricing before purchase"}},
+          "urgent": {"type": "noul", "instructions": "Does this request require immediate attention?"}
+        }
+      },
+      "expected": {"team": "sales", "urgent": false}
+    }
+  ]
+}

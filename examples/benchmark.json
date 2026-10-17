@@ -1,0 +1,12 @@
+{
+  "dataset": "support-triage",
+  "providers": ["laya", "jev"],
+  "options": {
+    "repetitions": 3,
+    "concurrency": 1,
+    "warmup": 1,
+    "timeout_ms": 120000,
+    "calibration_bins": 10,
+    "include_details": true
+  }
+}

@@ -20,6 +20,7 @@ pub fn config(backend: Backend) -> Config {
         jev_url: "http://127.0.0.1:1".into(),
         jev_key: None,
         gateway_key: None,
+        benchmark_dataset_dir: None,
     }
 }
 
