@@ -1,0 +1,10 @@
+{
+  "id": "sentiment",
+  "version": "1",
+  "description": "Small hand-labeled sentiment examples for exercising ordinal scores; not a representative evaluation corpus.",
+  "cases": [
+    {"id": "negative", "request": {"state": "This was a terrible experience. I hated every minute.", "questions": {"sentiment": {"type": "score", "instructions": "Rate the sentiment of the speaker.", "criteria": ["negative", "neutral", "positive"]}}}, "expected": {"sentiment": 0}},
+    {"id": "neutral", "request": {"state": "The package arrived on Tuesday. It contains three items.", "questions": {"sentiment": {"type": "score", "instructions": "Rate the sentiment of the speaker.", "criteria": ["negative", "neutral", "positive"]}}}, "expected": {"sentiment": 1}},
+    {"id": "positive", "request": {"state": "What a wonderful experience! I love this product and I am delighted.", "questions": {"sentiment": {"type": "score", "instructions": "Rate the sentiment of the speaker.", "criteria": ["negative", "neutral", "positive"]}}}, "expected": {"sentiment": 2}}
+  ]
+}
